@@ -92,7 +92,12 @@ public class IoTSafeDeclarations {
 	final static byte  PKI_WRAP_UNWRAP_INS	   			   = (byte)0x54;
 	
 	/** INS value for SET SEED APDU */
-	final static byte  PKI_SET_SEED_INS	   		   		   = (byte)0x58;
+	/* INS 0x58 was SET SEED. It allowed any caller, without authentication, to
+	 * mix chosen bytes into the generator that produces AES keys and object
+	 * identifiers, and it has been removed. The applet now answers 0x58 with
+	 * SW_INS_NOT_SUPPORTED. Do not reuse this INS value for anything else:
+	 * a host built against an older applet would silently invoke the new
+	 * command. */
 	
 	/** INS value for GET APPLET VERSION APDU */
 	final static byte  PKI_GET_APPLET_VERSION_INS  		   = (byte)0x70;
@@ -153,11 +158,6 @@ public class IoTSafeDeclarations {
 	final static byte  PKI_DECRYPT_P2  = (byte)0x00;
 	
 
-	
-	/** P1 value for SET SEED APDU */
-	final static byte  PKI_SET_SEED_P1 = (byte)0x00;
-	/** P2 value for SET SEED APDU */
-	final static byte  PKI_SET_SEED_P2 = (byte)0x00;
 	
 	/** P2 value for GENERATE SECRET KEY APDU */
 	final static byte  PKI_GENERATE_SECRET_KEY_P2  = (byte)0x00;
@@ -284,6 +284,29 @@ public class IoTSafeDeclarations {
 	/** MAX WRAP UNWRAP DATA INPUT 255 bytes - OBJECT_ID_SIZE down to next block size
 	 * aligned value which is 240 bytes */
 	final static short MAX_WRAP_UNWRAP_DATA_INPUT = (short)240;
+
+	/** The working buffer is partitioned so that cryptographic input and output
+	 * never occupy the same bytes. Java Card does not define the behaviour of a
+	 * Signature or Cipher whose input range overlaps its output range, and the
+	 * incoming chaining buffer is the working buffer, so an unpartitioned buffer
+	 * would alias on every chained sign and decrypt operation.
+	 *
+	 * Layout of the OBJECT_WORKING_BUFFER_SIZE (768) byte buffer:
+	 *   [0 .. 511]   incoming data, including the leading object ID
+	 *   [512 .. 767] cryptographic output
+	 *
+	 * The output region holds a full RSA-2048 block (256 bytes), which is the
+	 * largest signature or plaintext the applet produces. The input region holds
+	 * an RSA-2048 block plus the 8-byte object ID with room to spare. */
+
+	/** Bytes of the working buffer usable for incoming chained data */
+	final static short CHAINING_INPUT_BUFFER_SIZE = (short)0x200;
+
+	/** Offset in the working buffer at which cryptographic output is written */
+	final static short CRYPTO_OUTPUT_OFFSET = (short)0x200;
+
+	/** Bytes of the working buffer reserved for cryptographic output */
+	final static short CRYPTO_OUTPUT_SIZE = (short)0x100;
 	
 	/** AES BLOCK SIZE 16 Bytes */
 	final static short AES_BLOCK_SIZE = 0x10;

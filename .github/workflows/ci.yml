@@ -51,6 +51,20 @@ jobs:
       - name: NOTICE names the copyright holder
         run: grep -q "Quantag IT Solutions GmbH" NOTICE
 
+      - name: ApduMe stays free of MFC
+        # MFC is not present on the GitHub Windows runners, and ApduMe is a
+        # console tool that has no need for it. Catch a reintroduction here
+        # rather than as a confusing 'cannot open afxwin.h' later.
+        run: |
+          if git grep -nE "afxwin|afxext|afxdtctl|afxcmn|CString|AfxMessageBox" -- ApduMe ':!ApduMe/stdafx.h' ':!*.md'; then
+            echo "::error::MFC usage reintroduced in ApduMe — see the note in ApduMe/stdafx.h"
+            exit 1
+          fi
+          if git grep -nE "<UseOfMfc>(Dynamic|Static)</UseOfMfc>" -- ApduMe; then
+            echo "::error file=ApduMe/ApduMe.vcxproj::UseOfMfc must stay false"
+            exit 1
+          fi
+
   docs:
     name: Documentation
     runs-on: ubuntu-latest

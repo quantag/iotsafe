@@ -41,9 +41,16 @@
   <property name="out.dir"        value="deliverables/IoTSafeApplet"/>
   <property name="tools.dir"      value="tools"/>
   <property name="antjc.jar"      value="${tools.dir}/ant-javacard.jar"/>
-  <property name="antjc.version"  value="21.03.13"/>
+  <property name="antjc.version"  value="26.05.15"/>
   <property name="antjc.url"
             value="https://github.com/martinpaljak/ant-javacard/releases/download/v${antjc.version}/ant-javacard.jar"/>
+  <!-- SHA-256 of the v26.05.15 release asset (65577 bytes). The build refuses
+       to use the downloaded jar unless it matches, so a compromised or
+       truncated download cannot silently take part in building the CAP.
+       To move to another version, change antjc.version and replace this hash
+       with the one printed by 'ant print-tool-checksum'. -->
+  <property name="antjc.sha256"
+            value="14f5e25c07b184e4ec02ee148892c2ea7ad5d7e9db8b91109524df8f7d000589"/>
 
   <!-- AIDs. Change both before any production deployment: the RID
        A0:00:00:00:62 belongs to Oracle and is reserved for Java Card samples. -->
@@ -70,9 +77,44 @@
     <echo message="Using Java Card SDK at ${jc.home}"/>
   </target>
 
-  <target name="bootstrap" description="Download the ant-javacard build task">
+  <target name="bootstrap" description="Download and verify the ant-javacard build task">
     <mkdir dir="${tools.dir}"/>
     <get src="${antjc.url}" dest="${antjc.jar}" skipexisting="true" verbose="true"/>
+
+    <!-- Verify the download against the pinned hash before it is ever used.
+         'property' holds the expected value when 'verifyproperty' is set. -->
+    <checksum file="${antjc.jar}"
+              algorithm="SHA-256"
+              property="${antjc.sha256}"
+              verifyproperty="antjc.checksum.ok"/>
+
+    <fail>
+      <condition>
+        <not><istrue value="${antjc.checksum.ok}"/></not>
+      </condition>
+      <![CDATA[
+Checksum mismatch for ${antjc.jar}
+
+  expected SHA-256: ${antjc.sha256}
+
+The downloaded build tool does not match the pinned hash, so the build has
+stopped rather than run it. Either the download was corrupted or truncated, or
+the asset has changed.
+
+Delete ${tools.dir} and retry. If the mismatch persists, verify the release at
+${antjc.url} before changing antjc.sha256 in this file.
+      ]]>
+    </fail>
+
+    <echo message="Build tool verified: ant-javacard ${antjc.version}"/>
+  </target>
+
+  <target name="print-tool-checksum"
+          description="Print the SHA-256 of the downloaded build tool, for pinning a new version">
+    <mkdir dir="${tools.dir}"/>
+    <get src="${antjc.url}" dest="${antjc.jar}" skipexisting="true" verbose="true"/>
+    <checksum file="${antjc.jar}" algorithm="SHA-256" property="antjc.actual.sha256"/>
+    <echo message="ant-javacard ${antjc.version} SHA-256: ${antjc.actual.sha256}"/>
   </target>
 
   <target name="-taskdef" depends="bootstrap">

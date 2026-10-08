@@ -24,7 +24,7 @@
 #include <string>
 #include <map>
 
-typedef std::vector<CString> CReaderList;
+typedef std::vector<std::wstring> CReaderList;
 
 class FileLogger;
 
@@ -57,7 +57,7 @@ public:
 	void	setDeviceNameA(const std::string& name);
 
 private:
-	CString findReader(CReaderList* readers, const wchar_t* name);
+	std::wstring findReader(CReaderList* readers, const wchar_t* name);
 	int listReaders(SCARDCONTEXT hSC, CReaderList* readers);
 
 	FileLogger* logger;

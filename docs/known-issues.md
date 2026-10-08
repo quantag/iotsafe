@@ -8,81 +8,119 @@ anyone building on the applet can judge the risk themselves.
 Severity reflects impact on a deployed device, assuming the applet sits behind a
 GlobalPlatform secure channel as intended.
 
-| # | Severity | Issue | Location |
-| --- | --- | --- | --- |
-| 1 | High | Input and output buffers alias during chained sign and decrypt | `IoTSafeApplet.java:1063,1072,1150` |
-| 2 | High | Reseeding the random generator needs no authentication | `IoTSafeApplet.java:956` |
-| 3 | Medium | TLV length octets `80`–`FF` are sign-extended | `PKIUtil.java:59` |
-| 4 | Medium | All applet state is static | `IoTSafeApplet.java:49-101` |
-| 5 | Medium | Object identifiers are 7 bytes of a chained-CBC digest | `PKIObject.java:100-118` |
-| 6 | Low | Raw RSA sign and decrypt unreachable without chaining | `IoTSafeApplet.java:1004,1109` |
-| 7 | Low | `encodeLength` mis-encodes a length of exactly 256 | `PKIUtil.java:121` |
-| 8 | Low | GET RESPONSE with no pending data throws through an unguarded path | `IoTSafeApplet.java:201` |
-| 9 | Low | CANCEL AUTHENTICATION on an inactive credential returns `6999` | `IoTSafeApplet.java:1778,1785` |
-| 10 | Low | Object info data readable without authentication | `IoTSafeApplet.java:888` |
-| 11 | Low | AES-CBC key wrapping uses an all-zero IV | `IoTSafeApplet.java:1203` |
-| 12 | Info | Duplicate status words make failures ambiguous | `IoTSafeDeclarations.java:229-245` |
-| 13 | Info | Package AID sits under Oracle's RID | `configurations/IoTSafeApplet.conf` |
+Issue numbers are stable: a fixed issue keeps its number and is marked
+**Fixed** rather than being removed, so that references from commits, advisories
+and other documents stay meaningful.
+
+| # | Severity | Status | Issue | Location |
+| --- | --- | --- | --- | --- |
+| 1 | High | **Fixed** | Input and output buffers alias during chained sign and decrypt | `IoTSafeApplet.java:1050,1059,1144` |
+| 2 | High | **Fixed** | Reseeding the random generator needs no authentication | command removed |
+| 3 | Medium | **Fixed** | TLV length octets `80`–`FF` are sign-extended | `PKIUtil.java:61` |
+| 4 | Medium | Open | All applet state is static | `IoTSafeApplet.java:49-101` |
+| 5 | Medium | Open | Object identifiers are 7 bytes of a chained-CBC digest | `PKIObject.java:100-118` |
+| 6 | Low | Open | Raw RSA sign and decrypt unreachable without chaining | `IoTSafeApplet.java:983,1101` |
+| 7 | Low | Open | `encodeLength` mis-encodes a length of exactly 256 | `PKIUtil.java:123` |
+| 8 | Low | Open | GET RESPONSE with no pending data throws through an unguarded path | `IoTSafeApplet.java:201` |
+| 9 | Low | Open | CANCEL AUTHENTICATION on an inactive credential returns `6999` | `IoTSafeApplet.java:1771,1778` |
+| 10 | Low | Open | Object info data readable without authentication | `IoTSafeApplet.java:885` |
+| 11 | Low | Open | AES-CBC key wrapping uses an all-zero IV | `IoTSafeApplet.java:1196` |
+| 12 | Info | Open | Duplicate status words make failures ambiguous | `IoTSafeDeclarations.java:229-245` |
+| 13 | Info | Open | Package AID sits under Oracle's RID | `configurations/IoTSafeApplet.conf` |
+
+Both High-severity issues are fixed. Issues 4 and 5 remain the most substantial
+open items, and both change observable behaviour, so each needs an agreed
+approach before a patch — see [CONTRIBUTING.md](../CONTRIBUTING.md).
 
 ---
 
-## 1. Input and output buffers alias during chained sign and decrypt
+## 1. Input and output buffers alias during chained sign and decrypt — Fixed
 
-`chainingIncomingDataBuffer` is assigned `workingBuffer`
-(`IoTSafeApplet.java:131`), so the two names refer to one array. On the chained
-path, `signData` and `decryptData` read their input from
-`chainingIncomingDataBuffer` while writing their output to `workingBuffer` at
-offset 0 — the same array, with overlapping regions:
+**Was:** `chainingIncomingDataBuffer` is assigned `workingBuffer`, so the two
+names refer to one array. On the chained path, `signData` and `decryptData` read
+their input from `chainingIncomingDataBuffer` while writing their output to
+`workingBuffer` at offset 0 — the same array, with overlapping regions. Java
+Card does not define behaviour when a `Signature` or `Cipher` input range
+overlaps its output range: implementations may throw, silently truncate, or
+produce a corrupt result. Because raw RSA operations are reachable *only* via
+chaining (issue 6), every raw RSA signature and decryption took this path.
 
-```java
-sigLength = tmpSignature.sign(tmpBuf, tmpOffset, tmpDataLength,
-                              workingBuffer, (short) 0);
+**Fixed by** partitioning the 768-byte working buffer so that input and output
+can never occupy the same bytes, at no cost in RAM:
+
+```
+[0 .. 511]    incoming data, including the leading object ID
+[512 .. 767]  cryptographic output
 ```
 
-Java Card does not define behaviour when a `Signature` or `Cipher` input range
-overlaps its output range. Implementations may throw, silently truncate, or
-produce a corrupt result. Because raw RSA operations are reachable *only* via
-chaining (issue 6), every raw RSA signature and decryption on this applet takes
-this path.
+512 bytes is enough for a full RSA-2048 block plus the 8-byte object ID, and the
+256-byte output region holds the largest signature or plaintext the applet
+produces. Specifically:
 
-**Fix direction:** give the chained path its own output buffer, or copy the
-input out of `workingBuffer` before the call.
+- `CHAINING_INPUT_BUFFER_SIZE`, `CRYPTO_OUTPUT_OFFSET` and
+  `CRYPTO_OUTPUT_SIZE` in `IoTSafeDeclarations` define the layout.
+- `signData` and `decryptData` write their output at `CRYPTO_OUTPUT_OFFSET` and
+  send from that offset, on both the chained and unchained paths.
+- `handleChaining` bounds accumulated data to `CHAINING_INPUT_BUFFER_SIZE`
+  rather than the whole array, so incoming data cannot grow into the output
+  region.
+- Both operations additionally verify, on the chained path, that the input does
+  not reach past `CRYPTO_OUTPUT_OFFSET`, and answer `6700` if it does.
 
-## 2. Reseeding the random generator needs no authentication
+The practical limit on chained input for signing drops from 768 to 512 bytes.
+That is below the 256-byte RSA block and well above any ECDSA digest, so no
+supported operation is affected.
 
-`setSeed` (INS `58`) calls `checkPinAuthentication` nowhere, so any caller with
-APDU access can mix chosen bytes into the generator that subsequently produces
+## 2. Reseeding the random generator needs no authentication — Fixed
+
+**Was:** `setSeed` (INS `58`) called `checkPinAuthentication` nowhere, so any
+caller with APDU access could mix chosen bytes into the generator that produces
 AES keys (`ObjectManager.generateSecretKey`) and the per-card object identifier
-key (`ObjectManager` constructor).
+key (`ObjectManager` constructor). A conformant `ALG_SECURE_RANDOM`
+implementation mixes a seed into existing entropy rather than replacing it,
+which limited the impact, but that guarantee is platform-specific.
 
-A conformant `ALG_SECURE_RANDOM` implementation mixes a seed into existing
-entropy rather than replacing it, which limits this considerably, but the
-guarantee is platform-specific and should not be relied on.
+**Fixed by** removing the command outright rather than adding an authentication
+check. The platform's own entropy source is what the applet relies on, and
+there is no legitimate reason for a host to seed it.
 
-**Fix direction:** require PIN or PUK authentication, or remove the command and
-rely on the platform's own entropy.
+INS `58` now falls through to `SW_INS_NOT_SUPPORTED` (`6D00`). The INS value is
+retired and must not be reused: a host built against an older applet would
+otherwise silently invoke whatever took its place. `IoTSafeDeclarations` carries
+a comment to that effect in place of the constant.
 
-## 3. TLV length octets `80`–`FF` are sign-extended
+**Compatibility:** any host that called SET SEED will now receive `6D00`. No
+other command is affected.
 
-In the long form with one length octet:
+## 3. TLV length octets `80`–`FF` are sign-extended — Fixed
+
+**Was:** in the long form with one length octet,
 
 ```java
 length = (short)(tlvBuffer[(short)(offset + 2)]);
 ```
 
-A Java `byte` is signed, so `0x80`–`0xFF` yield −128 to −1 rather than 128 to
-255. The negative length reaches `setModulus`, `setW` or `setS` and surfaces as
-`6A80`. In practice this breaks import of any value of 128 to 255 bytes encoded
-with `81 xx` — which includes a 2048-bit RSA modulus, if the host chooses that
-encoding. The two-octet form `82 xx xx` goes through `Util.makeShort` and is
-unaffected.
+A Java `byte` is signed, so `0x80`–`0xFF` yielded −128 to −1 rather than 128 to
+255. The negative length reached `setModulus`, `setW` or `setS` and surfaced as
+`6A80`, breaking import of any value of 128 to 255 bytes encoded as `81 xx` —
+which includes a 2048-bit RSA modulus, if the host chose that encoding. The
+two-octet form `82 xx xx` goes through `Util.makeShort` and was unaffected.
 
-**Fix direction:** mask with `& 0xFF`.
+**Fixed by** masking the octet:
 
-`getLength` also performs no bounds check that tag, length and value lie within
-the supplied buffer. Out-of-range values currently land in the broad
-`catch (Exception)` in the store paths and become `6A80`, so this is contained,
-but it relies on the catch rather than on validation.
+```java
+length = (short)(tlvBuffer[(short)(offset + 2)] & 0x00FF);
+```
+
+`0x00FF` rather than `0xFF` keeps the expression within `short`, as Java Card
+Classic does not require `int` support.
+
+**Still open within this function:** `getLength` performs no bounds check that
+tag, length and value lie within the supplied buffer. Out-of-range values land
+in the broad `catch (Exception)` in the store paths and become `6A80`, so this
+is contained, but it relies on the catch rather than on validation. Boundary
+tests are listed as outstanding work in
+[the testing gap](#what-is-not-covered-by-tests).
 
 ## 4. All applet state is static
 
@@ -120,7 +158,9 @@ Both paths require the input to be exactly 256 bytes
 (`CIPHER_RSA_2048_NOPAD_BLOCK_LENGTH`), and both compute the payload length as
 `Lc − 8` to account for the object identifier. A single APDU caps `Lc` at 255,
 giving at most 247 payload bytes, so the unchained branch always answers `6700`.
-Only the chained path can satisfy the check — and that path hits issue 1.
+Only the chained path can satisfy the check. That path used to alias its input
+and output buffers (issue 1), which is now fixed, so chained raw RSA is sound —
+but it remains the only way to reach the operation.
 
 **Fix direction:** no behaviour change needed if chaining is the intended
 interface; document it, and consider rejecting the unchained form with a clearer
@@ -191,6 +231,37 @@ with nothing in a lab, but a deployed applet should use an AID under a RID its
 owner controls.
 
 ---
+
+## What is not covered by tests
+
+There is no automated test suite, and this is the largest remaining gap in the
+project. Public CI cannot build the applet at all, because the Oracle Java Card
+Development Kit is not redistributable, so CI checks licensing and
+documentation only.
+
+The fixes recorded above were verified by reading the code and by reasoning
+about the buffer layout, not by executing the applet. Anyone deploying this
+should exercise at least:
+
+- **PIN and PUK lifecycle** — activation order, retry counter decrement,
+  exhaustion, `63 Cx` values, state after deselect and reset.
+- **Malformed TLV** — length octets `7F`, `80`, `81 7F`, `81 80`, `81 FF`,
+  `82 xx xx`, lengths that run past the end of the command data, and truncated
+  tags. This is where issue 3 lived and where its remaining bounds-check gap
+  still is.
+- **Chained sign and decrypt at the boundary** — input totalling exactly
+  `CRYPTO_OUTPUT_OFFSET` bytes and one byte more, confirming `6700` rather than
+  a corrupt result. This is the regression test for issue 1.
+- **Unauthorised access** — every PIN-protected command before verification,
+  and `LIST OBJECTS` with and without authentication.
+- **Retired commands** — INS `58` answers `6D00`.
+- **Outgoing chaining** — responses just under, at, and over 256 bytes, and
+  GET RESPONSE with nothing pending (issue 8).
+
+[jCardSim](https://github.com/licel/jcardsim) can run a Java Card applet inside
+a JVM and would allow most of this in CI without the Oracle SDK. The
+proprietary `ALG_ECDSA_NONE` (`0x66`) signature instance created at install time
+would need guarding first, since no simulator provides it.
 
 ## Reporting something not listed here
 

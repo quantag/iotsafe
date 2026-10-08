@@ -32,7 +32,8 @@ are ignored thereafter. Only `4A` (store certificate), `42` (store
 private key), `44` (store public key), `50` (sign) and `52` (decrypt) accept
 chaining; anything else answers `6991`. For store-certificate the total length
 is carried in P1||P2 of each block, and the applet allocates a buffer of exactly
-that size; for the other four, blocks accumulate in a 768-byte transient buffer.
+that size; for the other four, blocks accumulate in the input region of the
+transient working buffer, which holds 512 bytes.
 
 **Outgoing chaining.** When a response exceeds 256 bytes the applet returns the
 first block with `61 xx`, where `xx` is the number of bytes still pending (`00`
@@ -68,10 +69,24 @@ applet-specific `A0`, both with P1 = P2 = `00`.
 | `50` | SIGN | yes | yes |
 | `52` | DECRYPT | yes | yes |
 | `54` | WRAP / UNWRAP | yes | — |
-| `58` | SET SEED | **no** | — |
 | `70` | GET APPLET VERSION | — | — |
 | `84` | GET RANDOM | — | — |
 | `A0`, `C0` | GET RESPONSE | — | — |
+
+### Retired commands
+
+| INS | Was | Now |
+| --- | --- | --- |
+| `58` | SET SEED | `6D00` — removed |
+
+SET SEED mixed host-supplied bytes into the on-card random generator and
+required no authentication, which let any caller with APDU access influence the
+generator that produces AES keys and object identifiers. It has been removed
+rather than gated: the platform's own entropy is what the applet relies on, and
+a host has no legitimate need to seed it.
+
+INS `58` is retired and will not be reused, so that a host built against an
+older applet cannot silently invoke a different command.
 
 ---
 
@@ -296,14 +311,6 @@ the whole sequence must run within one card session.
 
 Returns `Le` random bytes, 1 to 256 (`Le = 00` meaning 256).
 
-### SET SEED — `80 58 00 00 Lc <seed>`
-
-Mixes the supplied bytes into the on-card generator.
-
-> This command requires no authentication. Anyone with APDU access can
-> influence the generator that produces AES keys and object identifiers.
-> Treat it as a provisioning-time command and block it in the field.
-
 ### GET APPLET VERSION — `80 70 00 00 00`
 
 Returns two bytes: major, then minor. The current applet reports `01 15`.
@@ -405,5 +412,6 @@ a host cannot always tell them apart from the status word alone.
 | PIN and PUK length | 4 to 8 bytes |
 | User info data per object | 240 bytes |
 | Certificate size | bounded by free memory, 10 240 bytes held in reserve |
-| Transient working buffer | 768 bytes |
+| Transient working buffer | 768 bytes: 512 for input, 256 reserved for cryptographic output |
+| Chained input for sign, decrypt and key import | 512 bytes, including the object ID |
 | Maximum response per APDU | 256 bytes, then outgoing chaining |

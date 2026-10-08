@@ -55,8 +55,10 @@ public class PKIUtil {
 			
 			if(num == (short)1) {
 				
-				// one length byte needed
-				length = (short)(tlvBuffer[(short)(offset + 2)]);
+				// one length byte needed; mask to avoid sign extension, as a
+				// byte is signed in Java and a length octet of 0x80 to 0xFF
+				// would otherwise be read as a negative value
+				length = (short)(tlvBuffer[(short)(offset + 2)] & 0x00FF);
 			}
 			else if(num == (short)2) {
 				// two length bytes needed

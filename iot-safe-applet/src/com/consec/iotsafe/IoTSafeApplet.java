@@ -332,9 +332,6 @@ public class IoTSafeApplet extends Applet {
 		        case IoTSafeDeclarations.IOT_GET_RANDOM_INS:        	
 		            getRandom(apdu, buffer);
 		            break;
-		        case IoTSafeDeclarations.PKI_SET_SEED_INS:        	
-		            setSeed(apdu, buffer);
-		            break;
 	        	case IoTSafeDeclarations.PKI_ACTIVATE_PIN_INS:
 	        		activatePin(apdu, buffer);
 	        		break;
@@ -948,32 +945,14 @@ public class IoTSafeApplet extends Applet {
     	sendData(apdu, buffer, (short)0, expectedLength);
 	}
 	
-	/**
-	 * Sets seed of random number generator
-	 * @param apdu APDU object instance
-	 * @throws ISOException if the method failed.
+	/*
+	 * SET SEED (INS 0x58) has been removed. It required no authentication, so
+	 * any caller with APDU access could mix chosen bytes into the generator
+	 * that produces AES keys (ObjectManager.generateSecretKey) and the
+	 * card-unique object identifier key. The platform's own entropy source is
+	 * what the applet relies on; there is no legitimate need for a host to
+	 * seed it. INS 0x58 now falls through to SW_INS_NOT_SUPPORTED.
 	 */
-	private void setSeed(APDU apdu, byte[] buffer) {
-		
-		// check P1 and P2 value
-		if(((byte) buffer[ISO7816.OFFSET_P1] != IoTSafeDeclarations.PKI_SET_SEED_P1) ||
-		   ((byte) buffer[ISO7816.OFFSET_P2] != IoTSafeDeclarations.PKI_SET_SEED_P2)) {
-			ISOException.throwIt(IoTSafeDeclarations.SW_P1P2_NOT_SUPPORTED);
-		}
-		
-		// check Lc value and receive data
-		checkLcAndReceiveData(apdu, buffer[ISO7816.OFFSET_LC]);
-		
-		short seedLen = Util.makeShort((byte)0x00, buffer[ISO7816.OFFSET_LC]);
-		
-		// check length
-		if(seedLen == (short)0) {
-			ISOException.throwIt(IoTSafeDeclarations.SW_WRONG_LENGTH);
-		}
-		
-		// set seed
-    	randomData.setSeed(buffer, (short)ISO7816.OFFSET_CDATA, seedLen);
-	}
 	
 	/**
 	 * Calculates signature of provided input data with specified private key.
@@ -1029,6 +1008,13 @@ public class IoTSafeApplet extends Applet {
 			tmpBuf = chainingIncomingDataBuffer;
 			tmpOffset = (short)0;
 			tmpDataLength = (short)(getChainingDataOffset() - IoTSafeDeclarations.OBJECT_ID_SIZE);
+
+			// the chaining buffer is the working buffer, and the signature is
+			// written to the output region of that same array, so verify that
+			// the input does not reach into the output region
+			if((short)(getChainingDataOffset()) > IoTSafeDeclarations.CRYPTO_OUTPUT_OFFSET) {
+				ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
+			}
 		}
 		else {
 			
@@ -1061,7 +1047,7 @@ public class IoTSafeApplet extends Applet {
 			tmpCipher.init(privKey, Cipher.MODE_ENCRYPT);
 		
 			sigLength = tmpCipher.doFinal(tmpBuf, tmpOffset, 
-	        		tmpDataLength, workingBuffer, (short)0);
+	        		tmpDataLength, workingBuffer, IoTSafeDeclarations.CRYPTO_OUTPUT_OFFSET);
 		}
 		else {
 			
@@ -1070,7 +1056,7 @@ public class IoTSafeApplet extends Applet {
 				tmpSignature.init(privKey, Signature.MODE_SIGN);
 			
 		        sigLength = tmpSignature.sign(tmpBuf, tmpOffset, 
-		        		tmpDataLength, workingBuffer, (short)0);
+		        		tmpDataLength, workingBuffer, IoTSafeDeclarations.CRYPTO_OUTPUT_OFFSET);
 			}
 			catch(CryptoException cex) {
 				ISOException.throwIt(IoTSafeDeclarations.SW_SIGNATURE_NOT_AVAILABLE_FOR_GIVEN_KEY);
@@ -1078,7 +1064,7 @@ public class IoTSafeApplet extends Applet {
 		}	
         
         // send data	
-		sendData(apdu, workingBuffer, (short)0, sigLength);
+		sendData(apdu, workingBuffer, IoTSafeDeclarations.CRYPTO_OUTPUT_OFFSET, sigLength);
 	}
 	
 	
@@ -1119,6 +1105,13 @@ public class IoTSafeApplet extends Applet {
 			tmpBuf = chainingIncomingDataBuffer;
 			tmpOffset = (short)0;
 			tmpDataLength = (short)(getChainingDataOffset() - IoTSafeDeclarations.OBJECT_ID_SIZE);
+
+			// the chaining buffer is the working buffer, and the plaintext is
+			// written to the output region of that same array, so verify that
+			// the input does not reach into the output region
+			if((short)(getChainingDataOffset()) > IoTSafeDeclarations.CRYPTO_OUTPUT_OFFSET) {
+				ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
+			}
 		}
 		else {
 			
@@ -1148,10 +1141,10 @@ public class IoTSafeApplet extends Applet {
 		tmpOffset += (short)IoTSafeDeclarations.OBJECT_ID_SIZE;
 	
         short decDataLength = tmpCipher.doFinal(tmpBuf, tmpOffset, 
-        		tmpDataLength, workingBuffer, (short)0);
+        		tmpDataLength, workingBuffer, IoTSafeDeclarations.CRYPTO_OUTPUT_OFFSET);
         
         // send data	
-		sendData(apdu, workingBuffer, (short)0, decDataLength);
+		sendData(apdu, workingBuffer, IoTSafeDeclarations.CRYPTO_OUTPUT_OFFSET, decDataLength);
 	}
 
 	
@@ -2004,8 +1997,10 @@ public class IoTSafeApplet extends Applet {
         		// check authentication state
  	    		checkPinAuthentication(apdu);
  	    		 		
- 	    		// check for a possible array overflow exception
- 	    		if((short)(tmpOffset + lcS) > (short)chainingIncomingDataBuffer.length) {
+ 	    		// bound the accumulated data to the input region of the working
+ 	    		// buffer: the upper part is reserved for cryptographic output, so
+ 	    		// data must not be allowed to grow into it
+ 	    		if((short)(tmpOffset + lcS) > IoTSafeDeclarations.CHAINING_INPUT_BUFFER_SIZE) {
  	    			ISOException.throwIt(IoTSafeDeclarations.SW_NOT_ENOUGH_MEMORY_AVAILABLE);
  	    		}
  	    		

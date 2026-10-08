@@ -29,7 +29,7 @@ operations over ISO 7816-4 APDUs:
 | Certificates | Store, retrieve and delete X.509 certificates, with APDU chaining for large files |
 | Object model | Up to 20 objects per class, each addressed by an 8-byte object identifier |
 | Access control | User PIN and PUK via `OwnerPIN`, with retry counters and lifecycle commands |
-| Randomness | On-card secure random number generation and reseeding |
+| Randomness | On-card secure random number generation |
 
 Supported curves: `secp224k1`, `secp224r1`, `secp256k1`, `secp256r1`,
 `secp384r1`, `secp521r1`.
@@ -174,10 +174,18 @@ Please read these limitations before building anything on it:
 - **Padding is the host's job.** RSA signing and decryption are raw
   (`ALG_RSA_NOPAD`) primitives. A host that does not implement PKCS#1 correctly
   will produce signatures that are not secure.
-- **Known defects.** Open issues of substance — including buffer aliasing in
-  the chained sign/decrypt path, sign-extension in TLV length parsing, and an
-  unauthenticated reseed command — are tracked in the issue list and summarised
-  in [docs/known-issues.md](docs/known-issues.md). Review them before you ship.
+- **Known defects.** Both High-severity issues found by review are now fixed:
+  the buffer aliasing in the chained sign/decrypt path, and the unauthenticated
+  reseed command, which has been removed outright. The sign-extension bug in
+  TLV length parsing is fixed too. Eleven lower-severity items remain open,
+  the most substantial being static applet state and the all-zero IV in AES-CBC
+  key wrapping. All of them, fixed and open, are in
+  [docs/known-issues.md](docs/known-issues.md) with line references. Review it
+  before you ship.
+- **No automated tests.** The fixes above were verified by code review, not by
+  execution — public CI cannot build the applet, because the Oracle SDK is not
+  redistributable. `docs/known-issues.md` lists
+  [what a test suite should cover](docs/known-issues.md#what-is-not-covered-by-tests).
 - **Applet state is static.** All applet state lives in `static` fields, so a
   second instance of this package would share PINs and keys with the first.
   Install exactly one instance per card.

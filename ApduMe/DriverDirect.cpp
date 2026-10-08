@@ -110,7 +110,7 @@ int DriverDirect::sendDataToDriver(const std::string& data) {
     LOG("SCardEstablishContext OK");
 
     CReaderList readers;
-    CString myReader;
+    std::wstring myReader;
     ret = listReaders(hSC, &readers);
     if (ret != 0) {
         LOG("listReaders Failed");
@@ -119,13 +119,13 @@ int DriverDirect::sendDataToDriver(const std::string& data) {
     }
 
     myReader = findReader(&readers, deviceName.c_str());
-    if (!myReader || myReader.GetLength()==0) {
+    if (myReader.empty()) {
         LOG("required device not found in system..");
         goto fin;
     }
 
     lReturn = SCardConnect(hSC,
-        myReader,
+        myReader.c_str(),
         mMode,           //SCARD_SHARE_DIRECT, 
         mConnectProtocol,
 
@@ -166,7 +166,7 @@ int DriverDirect::sendDataToDriver(const std::string& data) {
 	LOG2("SCardSetAttrib ret", ret);
 
     if (ret != SCARD_S_SUCCESS) {
-       // AfxMessageBox(_T("Can not apply information to driver about assigned key-fob"));
+       // LOG("Can not apply information to driver about assigned key-fob");
 
     }
 
@@ -178,14 +178,16 @@ fin:
 	return result;
 }
 
-CString DriverDirect::findReader(CReaderList* readers, const wchar_t* nameReader) {
+std::wstring DriverDirect::findReader(CReaderList* readers, const wchar_t* nameReader) {
     for (size_t i = 0; i < readers->size(); i++) {
-        CString name1 = readers->at(i);
-        int idx = name1.Find(nameReader);
-        if (idx >= 0)
+        const std::wstring& name1 = readers->at(i);
+        if (name1.find(nameReader) != std::wstring::npos)
             return name1;
     }
-    return nullptr;
+    // Not found. The previous version returned nullptr here, which built an
+    // MFC string from a null pointer and tripped an ATL assertion; callers now
+    // test the result with empty().
+    return std::wstring();
 }
 
 
@@ -211,14 +213,14 @@ LONG DriverDirect::getGetFobAddress(std::string& adr) {
     CReaderList readers;
     listReaders(hSC, &readers);
 
-    CString myReader = findReader(&readers, L"StarSign Key Fob");
-    if (!myReader || myReader.GetLength() == 0) {
+    std::wstring myReader = findReader(&readers, L"StarSign Key Fob");
+    if (myReader.empty()) {
         LOG("no target device found in system.. OK");
         goto fin;
     }
 
     ret = SCardConnect(hSC,
-        myReader,
+        myReader.c_str(),
         mMode, //SCARD_SHARE_DIRECT,
         mConnectProtocol,
         &hCardHandle,
@@ -251,7 +253,7 @@ LONG DriverDirect::getGetFobAddress(std::string& adr) {
 
     }
     else {
-        AfxMessageBox(_T("Can not retrieve information about assigned key-fob"));
+        LOG("Can not retrieve information about assigned key-fob");
     }
 
     ret = SCardDisconnect(hCardHandle, SCARD_LEAVE_CARD);
@@ -286,16 +288,16 @@ int DriverDirect::transmit(const std::string& data, std::string& response) {
     CReaderList readers;
     listReaders(hSC, &readers);
 
-    CString myReader = findReader(&readers, deviceName.c_str());
-    if (!myReader || myReader.GetLength() == 0) {
+    std::wstring myReader = findReader(&readers, deviceName.c_str());
+    if (myReader.empty()) {
         LOG("required reader not found in system.. ");
         result = -2;
         goto fin;
     }
-    LOG(std::string("Found target device: ") + Utils::ws2s( std::wstring((LPCTSTR)myReader) ));
+    LOG(std::string("Found target device: ") + Utils::ws2s(myReader));
 
     lReturn = SCardConnect(hSC,
-        myReader,
+        myReader.c_str(),
         mMode, 
         mConnectProtocol,
         &hCardHandle,

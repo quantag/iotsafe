@@ -1,0 +1,87 @@
+# Copyright 2023-2026 Quantag IT Solutions GmbH
+# SPDX-License-Identifier: Apache-2.0
+
+name: Bug report
+description: Something in the applet or the ApduMe tool behaves incorrectly
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please check [docs/known-issues.md](https://github.com/quantag/iotsafe/blob/main/docs/known-issues.md)
+        first — the defects found by review are listed there with line
+        references.
+
+        For anything with security impact, follow
+        [SECURITY.md](https://github.com/quantag/iotsafe/blob/main/SECURITY.md) instead of filing here.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you expected, and what you got instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: trace
+    attributes:
+      label: APDU trace
+      description: >
+        The command sequence that reproduces it, with the status words.
+        ApduMe writes a log next to its input script.
+      render: text
+      placeholder: |
+        >>> (5 bytes) : 80 20 00 00 04 31 32 33 34
+        <<< (2 bytes) : 90 00
+        >>> (5 bytes) : 80 40 03 04 00
+        <<< (2 bytes) : 6A 86
+    validations:
+      required: true
+
+  - type: input
+    id: platform
+    attributes:
+      label: Card platform
+      description: Product and Java Card version, or the simulator version.
+      placeholder: Infineon SLE78, Java Card 3.1 — or jcop simulator 3.1.0
+    validations:
+      required: true
+
+  - type: input
+    id: applet-version
+    attributes:
+      label: Applet version
+      description: The two bytes returned by `80 70 00 00 00`.
+      placeholder: "01 15"
+
+  - type: input
+    id: sdk
+    attributes:
+      label: Java Card SDK used to build
+      placeholder: Oracle JCDK 3.1.0
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options:
+        - Applet — PIN or PUK handling
+        - Applet — object store
+        - Applet — key generation or import
+        - Applet — signing or decryption
+        - Applet — key wrapping
+        - Applet — command chaining
+        - Applet — other
+        - ApduMe host tool
+        - Build or documentation
+    validations:
+      required: true
+
+  - type: textarea
+    id: anything-else
+    attributes:
+      label: Anything else
+      description: >
+        Whether it persists across reset or deselect, whether it is
+        platform-specific, and anything you ruled out.

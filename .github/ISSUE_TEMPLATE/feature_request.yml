@@ -1,0 +1,53 @@
+# Copyright 2023-2026 Quantag IT Solutions GmbH
+# SPDX-License-Identifier: Apache-2.0
+
+name: Feature or protocol change
+description: Propose a new command, algorithm, curve or behaviour
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Applet resources are tight and every command widens the attack surface,
+        so proposals that extend the protocol need a concrete use case.
+
+  - type: textarea
+    id: use-case
+    attributes:
+      label: Use case
+      description: What are you building, and what does the applet stop you doing?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: >
+        If this adds or changes a command, sketch the APDU: CLA, INS, P1, P2,
+        data format and response.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Kind of change
+      options:
+        - New command
+        - New algorithm or curve
+        - Change to an existing command
+        - Secure channel support
+        - Host tooling
+        - Other
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: compatibility
+    attributes:
+      label: Compatibility
+      options:
+        - label: This would change the behaviour of an existing command
+        - label: This would change an existing status word or data format
+        - label: This needs a Java Card feature beyond the 3.1 Classic API

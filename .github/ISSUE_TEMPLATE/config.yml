@@ -1,0 +1,17 @@
+# Copyright 2023-2026 Quantag IT Solutions GmbH
+# SPDX-License-Identifier: Apache-2.0
+
+blank_issues_enabled: true
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/quantag/iotsafe/security/advisories/new
+    about: Report privately instead of opening a public issue — see SECURITY.md.
+  - name: Known issues
+    url: https://github.com/quantag/iotsafe/blob/main/docs/known-issues.md
+    about: Defects already found by review, with line references and suggested fixes.
+  - name: Protocol reference
+    url: https://github.com/quantag/iotsafe/blob/main/docs/apdu-reference.md
+    about: Every command, parameter encoding and status word.
+  - name: Commercial support
+    url: https://quantag-it.com
+    about: Integration support and provisioning-stack work from Quantag IT Solutions GmbH.

@@ -1,0 +1,100 @@
+# Copyright 2023-2026 Quantag IT Solutions GmbH
+# SPDX-License-Identifier: Apache-2.0
+#
+# The applet CAP cannot be built here: it needs the Oracle Java Card
+# Development Kit, which is not redistributable. What CI can do is check that
+# licensing stays intact, that the documentation does not rot, and that the
+# Windows host tool still compiles.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  licence-headers:
+    name: Licence headers
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Every source file carries an SPDX identifier
+        run: |
+          status=0
+          for f in $(git ls-files '*.java' '*.cpp' '*.h'); do
+            if ! grep -q "SPDX-License-Identifier: Apache-2.0" "$f"; then
+              echo "::error file=$f::missing SPDX-License-Identifier header"
+              status=1
+            fi
+            if ! grep -q "Quantag IT Solutions GmbH" "$f"; then
+              echo "::error file=$f::missing copyright line"
+              status=1
+            fi
+          done
+          exit $status
+
+      - name: LICENSE is the unmodified Apache 2.0 text
+        run: |
+          expected=3b83ef96387f14655fc854ddc3c6bd57
+          actual=$(md5sum LICENSE | cut -d' ' -f1)
+          if [ "$actual" != "$expected" ]; then
+            echo "::error file=LICENSE::LICENSE differs from the canonical Apache 2.0 text ($actual)"
+            exit 1
+          fi
+
+      - name: NOTICE names the copyright holder
+        run: grep -q "Quantag IT Solutions GmbH" NOTICE
+
+  docs:
+    name: Documentation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check relative links resolve
+        run: |
+          python3 - <<'PY'
+          import pathlib, re, subprocess, sys
+
+          files = subprocess.run(["git", "ls-files", "*.md"],
+                                 capture_output=True, text=True,
+                                 check=True).stdout.split()
+          link = re.compile(r"\[[^\]]*\]\(([^)]+)\)")
+          bad = 0
+          for name in files:
+              md = pathlib.Path(name)
+              for target in link.findall(md.read_text()):
+                  if target.startswith(("http://", "https://", "mailto:", "#")):
+                      continue
+                  path = target.split("#", 1)[0]
+                  if not path:
+                      continue
+                  if not (md.parent / path).exists():
+                      print(f"::error file={name}::broken relative link: {target}")
+                      bad += 1
+          sys.exit(1 if bad else 0)
+          PY
+
+  apdume:
+    name: Build ApduMe (Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: microsoft/setup-msbuild@v2
+
+      - name: Build
+        working-directory: ApduMe
+        run: msbuild ApduMe.sln /p:Configuration=Release /p:Platform=x64 /m
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ApduMe-x64
+          path: ApduMe/x64/Release/ApduMe.exe
+          if-no-files-found: warn

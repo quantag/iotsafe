@@ -97,7 +97,7 @@ int FileIO::readFile(const std::string& fileName, std::string& data) {
 	file.close();
 
 	data.assign((const char*)memblock, len);
-	free(memblock);
+	delete[] memblock;   // allocated with new[]
 
 	return 0;
 }
@@ -119,7 +119,7 @@ int FileIO::readFileW(const std::wstring& fileName, std::string& data) {
 	file.close();
 
 	data.assign((const char*)memblock, len);
-	free(memblock);
+	delete[] memblock;   // allocated with new[]
 
 	return 0;
 }

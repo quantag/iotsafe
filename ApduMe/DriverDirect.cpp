@@ -18,6 +18,8 @@
 
 #include "DriverDirect.h"
 
+#include <cstring>    // memset, strlen
+
 #include "FileLogger.h"
 #include "Utils.h"
 

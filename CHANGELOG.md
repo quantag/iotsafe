@@ -47,6 +47,18 @@ entry where it changes.
 - `findReader` returned `nullptr` as a `CString`, which trips an ATL assertion
   rather than signalling "not found". It now returns an empty `std::wstring`
   and callers test with `empty()`.
+- **Added the standard headers that MFC had been supplying transitively.**
+  Removing MFC broke the ApduMe build: `FileLogger.cpp` uses `time`,
+  `localtime`, `localtime_s` and `strftime`, which `afxwin.h` had been pulling
+  in. Every translation unit now includes what it uses — `<ctime>` and
+  `<cstdio>` in `FileLogger.cpp`, `<cstring>` in `DriverDirect.cpp`, and
+  `<cstring>`, `<cstdarg>` and `<cstdlib>` in `Utils.cpp` — rather than relying
+  on transitive includes.
+- **Matched three deallocations to their allocators.** Found while adding those
+  headers, and undefined behaviour in every case:
+  `Utils::loadFileW` and both `FileIO` loaders released a `new byte[]` buffer
+  with `free()`, now `delete[]`; and `Utils::hex2bin` released a `calloc`
+  buffer through `SAFE_FREE`, which applies `delete`, now `free()`.
 - **`build.xml` referenced an ant-javacard release that does not exist.**
   Version `21.03.13` was never tagged, so `ant bootstrap` would fail with a
   404. Pinned to `26.05.15`, the current release.

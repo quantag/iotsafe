@@ -18,6 +18,9 @@
 
 #include "FileLogger.h"
 
+#include <ctime>      // time, localtime, localtime_s, strftime
+#include <cstdio>     // fopen_s, fwrite, fclose, fflush, printf
+
 #include "Utils.h"
 
 FileLogger::FileLogger(const char* fileName) {

@@ -18,6 +18,10 @@
 
 #include "Utils.h"
 
+#include <cstring>    // memset
+#include <cstdarg>    // va_list, va_start, va_end
+#include <cstdlib>    // calloc, free
+
 #include <sstream>
 #include <fstream>
 
@@ -44,7 +48,8 @@ ErrCode Utils::loadFileW(const std::wstring& fileName, std::string& result) {
 		return eBadFile;
 	}
 	result.assign((const char*)buffer, len);
-	free(buffer);
+	// loadFileW allocates with new[], so it must be released with delete[]
+	delete[] buffer;
 	return eOk;
 }
 
@@ -161,7 +166,9 @@ std::string Utils::hex2bin(const std::string& str) {
 	byte* tmp = hex2bin0(str3, len);
 	std::string res;
 	res.assign((const char*)tmp, len);
-	SAFE_FREE(tmp);
+	// hex2bin0 allocates with calloc, so it must be released with free, not
+	// the delete that SAFE_FREE applies
+	free(tmp);
 	return res;
 }
 
